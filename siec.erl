@@ -1,6 +1,7 @@
 %  siec.erl
 -module(siec).
--export([init/0,init/1,start/1]).
+-compile(export_all).
+%-export([init/0,init/1,start/1]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DATA FORMATS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -12,8 +13,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    API    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 init() ->
-    not_implemented.
+    {prepareElectricalNodeProcess(),
+    [{1,preparePowerhouseProcess()}],
+    [prepareDistributiveProcess()]}.
     %Zahardkodowana wersja
+    %TODO 1 przypadek prosty
 
 init(filename) ->
     not_implemented.
@@ -22,19 +26,30 @@ init(filename) ->
 
 %Funkcje init mają zwrócić krotkę, w której będzie mapa z elektrowniami, mapa z rozdzielniami i lista wezlow
 
-start(data) ->
-    not_implemented.
+%start(data) ->
+%start({ElectricalNode,Powerhouses,Distributives}) ->
+start({PID1,[{1,PID2}],[PID3]}) ->
+    PID1,
+    PID2 ! startPowerhouse.
     %Otrzymuje na wejsciu krotke, gdzie jest mapa elektrowni, mapa rozdzielni i lista wezlow, do kazdego procesu wysyla wiadomosc, ze nadszedl czas, aby ten proces przelaczyl sie w tryb symulacji
 
 %Optional add stop(data)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CREATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-prepareProcesses() ->
+preparePowerhouseProcess() ->
+    spawn(siec,startPowerhouse,[]).
+
+prepareDistributiveProcess() ->
+    not_implemented.
+
+prepareElectricalNodeProcess() ->
     not_implemented.
 
 startPowerhouse() ->
-    not_implemented.
+    receive
+        startPowerhouse -> io:fwrite("ok~n")
+    end.
 
 startDistributive() ->
     not_implemented.
@@ -44,36 +59,37 @@ startElectricalNode() ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SIMULATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-runPowerhouse(Energy,initialPower) ->
+runPowerhouse(Id,Energy,InitialPower) ->
     receive
-    Need -> runPowerhouse(energyNeed,initialPower)
+    Need -> runPowerhouse(Id,Energy-Need,InitialPower)
     after
     timestamp -> 
-        saveEnergyBalance(enerhyNeed,self()),
-        runPowerhouse(initialPower,initialPower)
+        saveEnergyBalance(Id,Energy),
+        runPowerhouse(Id,InitialPower,InitialPower)
     end.
 
-runDistributive(Need,initialNeed) ->
+runDistributive(Need,InitialNeed) ->
     receive
     nodePID -> 
         nodePID ! Need,
-        runDistributive(0,initialNeed)
+        runDistributive(0,InitialNeed)
     after
-    timestamp -> runDistributive(initialNeed,initialNeed)
+    timestamp -> runDistributive(InitialNeed,InitialNeed)
     end.
 
-runElectricalNode(powerhouses,distributives,[]) ->
-    runElectricalNode(powerhouse,distributives,distributives);
-runElectricalNode(powerhouses,distributives,[H,T]) ->
+%powerhouses and distr are litst of {id,PID} or lists of PIDS
+runElectricalNode(Powerhouses,Distributives,[]) ->
+    runElectricalNode(Powerhouses,Distributives,Distributives);
+runElectricalNode(Powerhouses,Distributives,[H,T]) ->
     getDitributivePID(H) ! self(),
     receive
-        Need -> randomPowerhouse(powerhouses) ! Need
+        Need -> randomPowerhouse(Powerhouses) ! Need
     end,
-    runElectricalNode(powerhouses,distributives,T).
+    runElectricalNode(Powerhouses,Distributives,T).
     
 
 
-randomPowerhouse([{_,PID},T]) -> 
+randomPowerhouse([{_,PID},_]) -> 
     PID;
 randomPowerhouse(powerhouses) ->
     not_implemented. %TODO random
@@ -83,7 +99,7 @@ getDitributivePID({_,PID}) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STATISTICS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-saveEnergyBalance(Energy,filename) ->
+saveEnergyBalance(FilenameId,Energy) ->
     not_implemented.
 
 
