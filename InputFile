@@ -2,4 +2,5 @@
 % {electricalNodeID,[{PowerhouseID, PowerhousePower}],[DistributivesID,Type]}
 % PowerhousePower should be digit greater than zero
 % Possible Types are: normal, reverse
+% Any electrical node must contain at least one powerhouse and one distributive
 {1,[{1,500}],[{1,normal},{2,reverse}]}.

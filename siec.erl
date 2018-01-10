@@ -1,4 +1,4 @@
-% siec.erl
+% siec.erl authors Paweł Dzień and Szymon Majkut
 -module(siec).
 -compile(export_all).
 -export([main/0]).
@@ -16,10 +16,11 @@ startSimulation(1) ->
     io:format("Clear output file:~n~n"),
     file:write_file("OutputFile",""),
     io:format("Start prepareation:~n~n"),
-    I = initProcesses(),
-    %S = initProcesses("InputFile"), %TODO data from file reading
-    %I = createProcesses(S),
-    start(I);
+    S = initStructure("InputFile"),
+    I = createElectricalNodesProcesses(S),
+    PStop = getPidListEN(I),
+    PStart = getPidListENToStart(I),
+    start(I,PStart,PStop);
 startSimulation(_) ->
     io:format("Please follow instruction...~n"),
     main().
@@ -28,34 +29,18 @@ input()->
     try io:fread("==simulation==>","~d") of
         {ok, [N]} -> N
     catch
-        _:_ -> 5 %TODO why doeas not work for string input?
+        _:_ -> 5 %TODO why doeas not catch string input?
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    API    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-initProcesses() ->
-    {prepareElectricalNodeProcess(),
-    [{1,preparePowerhouseProcess()}],
-    [prepareDistributiveProcess()]}.%Also preapare PidsList
 
-initProcesses(Filename) ->
-    {ok, X} = file:consult(Filename),X. 
-    %TODO try catch for exeptions
 
-testread() ->
-   file:consult("InputFile").
-
-%start(data,PidList) -> TODO change input structure
-%start({ElectricalNode,Powerhouses,Distributives}) ->
-start({PID1,[{1,PID2}],[PID3]}) ->
+start(Structure,StartPidList,StopPidList) ->
     io:fwrite("RUN!~n"),
-    PID1 ! {start,[PID2],[PID3]},
-    PID2 ! start,
-    PID3 ! start,
-    %startThemAll([PID1,PID2,PID3]) TODO need to thing about it
-    stop(input,[PID1,PID2,PID3]).
-    %Otrzymuje na wejsciu krotke, gdzie jest mapa elektrowni, mapa rozdzielni i lista wezlow, do kazdego procesu wysyla wiadomosc, ze nadszedl czas, aby ten proces przelaczyl sie w tryb symulacji
+    startThemAll(StartPidList),
+    stop(input,StopPidList).
 
 stop(0,Pids) ->
     io:format("It is time to stop!:~n~n"),
@@ -68,6 +53,62 @@ stop(_,Pids) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CREATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+initStructure(Filename) ->
+    {ok, X} = file:consult(Filename),X. 
+    %TODO try catch for exeptions
+
+createElectricalNodesProcesses([{Id,P,D}]) ->
+    [{Id,createPowerhouseProcesses(P),
+    createDistributiveProcesses(D),
+    prepareElectricalNodeProcess()}];
+createElectricalNodesProcesses([{Id,P,D}|T]) ->
+    [{Id,createPowerhouseProcesses(P),
+    createDistributiveProcesses(D),
+    prepareElectricalNodeProcess()}|
+        createElectricalNodesProcesses(T)].
+
+createPowerhouseProcesses([{Id,Power}]) ->
+    [{Id,Power,preparePowerhouseProcess()}];
+createPowerhouseProcesses([{Id,Power}|T]) ->
+    [{Id,Power,preparePowerhouseProcess()}|
+        createPowerhouseProcesses(T)].
+
+createDistributiveProcesses([{Id,Type}]) ->
+    [{Id,Type,prepareDistributiveProcess()}];
+createDistributiveProcesses([{Id,Type}|T]) ->
+    [{Id,Type,prepareDistributiveProcess()}|
+    createDistributiveProcesses(T)].
+
+getPidListEN([{_,P,D,Pidek}]) ->
+    PowerPids = getPidListP(P),
+    DistrPids = getPidListD(D),
+    PowerPids ++ DistrPids ++ [Pidek];
+getPidListEN([{_,P,D,Pidek}|T]) ->
+    PowerPids = getPidListP(P),
+    DistrPids = getPidListD(D),
+    OtherPids = getPidListEN(T),
+    PowerPids ++ DistrPids ++ OtherPids ++ [Pidek].
+
+getPidListENToStart([{_,P,D,Pidek}]) ->
+    PowerPids = getPidListP(P),
+    DistrPids = getPidListD(D),
+    [{Pidek,PowerPids,DistrPids}];
+getPidListENToStart([{_,P,D,Pidek}|T]) ->
+    PowerPids = getPidListP(P),
+    DistrPids = getPidListD(D),
+    OtherPids = getPidListEN(T),
+    [{Pidek,PowerPids,DistrPids},OtherPids].
+
+getPidListP([{_,_,Pidek}]) ->
+    [Pidek];
+getPidListP([{_,_,Pidek}|T]) ->
+    [Pidek|getPidListP(T)].
+
+getPidListD([{_,_,Pidek}]) ->
+    [Pidek];
+getPidListD([{_,_,Pidek}|T]) ->
+    [Pidek|getPidListD(T)].
+
 prepareElectricalNodeProcess() ->
     spawn(siec,startElectricalNode,[]).
 
@@ -76,6 +117,9 @@ preparePowerhouseProcess() ->
 
 prepareDistributiveProcess() ->
     spawn(siec,startDistributive,[]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SIMULATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 startElectricalNode() ->
     receive
@@ -86,31 +130,42 @@ startElectricalNode() ->
 startPowerhouse() ->
     receive
         start -> io:fwrite("Power House started~n"),
-                runPowerhouse(1,100,100)
+                runPowerhouse(1,100,100) %TODO get this values from structure
     end.
 
 startDistributive() ->
     receive
         start -> io:fwrite("Distributive started~n"),
-                runDistributive(5,5)
+                runDistributive(5,5) %TODO get this values from structure
     end.
 
 stopThemAll([P]) ->
-    P ! stop,
-    dupa;
+    P ! stop;
 stopThemAll([H|T]) ->
     H ! stop,
     stopThemAll(T).
 
-startThemAll([P]) ->
-    P ! start,
-    dupa;
-startThemAll([H|T]) ->
-    H ! start,
-    stopThemAll(T).
+startThemAll([{Pidek,P,D}]) ->
+    startPow(P),
+    startDis(D),
+    Pidek ! {start,P,D};
+startThemAll([{Pidek,P,D}|T]) ->
+    startPow(P),
+    startDis(D),
+    Pidek ! {start,P,D},
+    startThemAll(T).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SIMULATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+startPow([P]) ->
+    P ! start;
+startPow([P|T]) ->
+    P ! start,
+    startPow(T).
+
+startDis([P]) ->
+    P ! start;
+startDis([P|T]) ->
+    P ! start,
+    startDis(T).
 
 runElectricalNode(P,D,[DistrPID]) ->
     DistrPID ! {frEN,self()},
