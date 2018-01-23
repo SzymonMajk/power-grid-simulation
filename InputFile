@@ -1,6 +1,6 @@
 %%% FORMAT %%%
 % {electricalNodeID,[{PowerhouseID, PowerhousePower}],[DistributivesID,Type]}
 % PowerhousePower should be digit greater than zero
-% Possible Types are: normal, reverse
+% Possible Types are: normal, reverse, random
 % Any electrical node must contain at least one powerhouse and one distributive
-{1,[{3,500}],[{1,normal},{2,reverse}]}.
+{1,[{1,50}],[{1,normal},{2,reverse},{3,normal},{4,reverse},{5,random}]}.

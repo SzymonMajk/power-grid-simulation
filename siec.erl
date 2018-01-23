@@ -24,6 +24,9 @@ startSimulation(1) ->
 startSimulation(_) ->
     io:format("Please follow instruction...~n"),
     main().
+startSimulation(_,_) ->
+    io:format("Please follow instruction...~n"),
+    main().
 
 input()->
     try io:fread("==sim==>","~d") of
@@ -47,6 +50,9 @@ stop(0,Pids) ->
     stopThemAll(Pids),
     main();
 stop(_,Pids) ->
+    io:format("Type 0 to stop!~n"),
+    stop(input(),Pids).
+stop(_,_,Pids) ->
     io:format("Type 0 to stop!~n"),
     stop(input(),Pids).
 
@@ -141,6 +147,12 @@ startDistributive(reverse) ->
     receive
         start -> io:fwrite("Distributive started~n"),
                 runDistributive(-2,-2)
+    end;
+startDistributive(random) ->
+    R = rand:uniform(20),
+    receive
+        start -> io:fwrite("Distributive started~n"),
+                runDistributive(R,R)
     end.
 
 stopThemAll([P]) ->
@@ -212,8 +224,7 @@ runDistributive(Need,InitialNeed) ->
     stop -> io:fwrite("N: Stopped ~n");
     {toDist,ENPID} when Need /= 0 -> 
         ENPID ! {fromDist,self(),Need},
-        runDistributive(0,InitialNeed),
-        io:fwrite("D:Need sent.~n");
+        runDistributive(0,InitialNeed);
 	{toDist,ENPID} when Need == 0 ->
 		ENPID ! {fromDist,self(),noNeed},
 		runDistributive(Need,InitialNeed);
@@ -231,7 +242,7 @@ randomPowerhouse(powerhouses) ->
 
 saveEnergyBalance(FilenameId,Energy) ->
     Data = integer_to_list(FilenameId) ++ " used " 
-		++ integer_to_list(Energy) ++ " ",
+		++ integer_to_list(Energy) ++ " [kW/s]",
     LineSep = io_lib:nl(),
     file:write_file("OutputFile",Data,[append]),
     file:write_file("OutputFile",LineSep,[append]).
