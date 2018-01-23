@@ -7,11 +7,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 main() ->
-    io:format("Type 1 to start hardcoded example~n"),
+    io:format("Type 1 to start~n"),
     io:format("Type 0 to exit~n"),
     startSimulation(input()).
 
-startSimulation(0) -> io:format("Thanks you, have a good day!~n");
+startSimulation(0) -> io:format("Thanks, have a good day!~n");
 startSimulation(1) ->
     io:format("Clear output file:~n~n"),
     file:write_file("OutputFile",""),
@@ -20,13 +20,13 @@ startSimulation(1) ->
     I = createElectricalNodesProcesses(S),
     PStop = getPidListEN(I),
     PStart = getPidListENToStart(I),
-    start(I,PStart,PStop);
+    start(PStart,PStop);
 startSimulation(_) ->
     io:format("Please follow instruction...~n"),
     main().
 
 input()->
-    try io:fread("==simulation==>","~d") of
+    try io:fread("==sim==>","~d") of
         {ok, [N]} -> N
     catch
         _:_ -> 5 %TODO why doeas not catch string input?
@@ -37,7 +37,7 @@ input()->
 
 
 
-start(Structure,StartPidList,StopPidList) ->
+start(StartPidList,StopPidList) ->
     io:fwrite("RUN!~n"),
     startThemAll(StartPidList),
     stop(input,StopPidList).
@@ -47,14 +47,14 @@ stop(0,Pids) ->
     stopThemAll(Pids),
     main();
 stop(_,Pids) ->
-    io:format("Type s to stop!~n"),
+    io:format("Type 0 to stop!~n"),
     stop(input(),Pids).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CREATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 initStructure(Filename) ->
-    {ok, X} = file:consult(Filename),X. 
+    {ok, X} = file:consult(Filename),X.
     %TODO try catch for exeptions
 
 createElectricalNodesProcesses([{Id,P,D}]) ->
@@ -68,15 +68,15 @@ createElectricalNodesProcesses([{Id,P,D}|T]) ->
         createElectricalNodesProcesses(T)].
 
 createPowerhouseProcesses([{Id,Power}]) ->
-    [{Id,Power,preparePowerhouseProcess()}];
+    [{Id,Power,preparePowerhouseProcess(Id,Power)}];
 createPowerhouseProcesses([{Id,Power}|T]) ->
-    [{Id,Power,preparePowerhouseProcess()}|
+    [{Id,Power,preparePowerhouseProcess(Id,Power)}|
         createPowerhouseProcesses(T)].
 
 createDistributiveProcesses([{Id,Type}]) ->
-    [{Id,Type,prepareDistributiveProcess()}];
+    [{Id,Type,prepareDistributiveProcess(Type)}];
 createDistributiveProcesses([{Id,Type}|T]) ->
-    [{Id,Type,prepareDistributiveProcess()}|
+    [{Id,Type,prepareDistributiveProcess(Type)}|
     createDistributiveProcesses(T)].
 
 getPidListEN([{_,P,D,Pidek}]) ->
@@ -96,8 +96,7 @@ getPidListENToStart([{_,P,D,Pidek}]) ->
 getPidListENToStart([{_,P,D,Pidek}|T]) ->
     PowerPids = getPidListP(P),
     DistrPids = getPidListD(D),
-    OtherPids = getPidListEN(T),
-    [{Pidek,PowerPids,DistrPids},OtherPids].
+    [{Pidek,PowerPids,DistrPids}|getPidListENToStart(T)].
 
 getPidListP([{_,_,Pidek}]) ->
     [Pidek];
@@ -112,11 +111,11 @@ getPidListD([{_,_,Pidek}|T]) ->
 prepareElectricalNodeProcess() ->
     spawn(siec,startElectricalNode,[]).
 
-preparePowerhouseProcess() ->
-    spawn(siec,startPowerhouse,[]).
+preparePowerhouseProcess(Id,Power) ->
+    spawn(siec,startPowerhouse,[Id,Power]).
 
-prepareDistributiveProcess() ->
-    spawn(siec,startDistributive,[]).
+prepareDistributiveProcess(Type) ->
+    spawn(siec,startDistributive,[Type]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SIMULATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -127,16 +126,21 @@ startElectricalNode() ->
                 runElectricalNode(Plist,Dlist,Dlist)
     end.
 
-startPowerhouse() ->
+startPowerhouse(Id,Power) ->
     receive
         start -> io:fwrite("Power House started~n"),
-                runPowerhouse(1,100,100) %TODO get this values from structure
+                runPowerhouse(Id,Power,Power,[]) 
     end.
 
-startDistributive() ->
+startDistributive(normal) ->
     receive
         start -> io:fwrite("Distributive started~n"),
-                runDistributive(5,5) %TODO get this values from structure
+                runDistributive(12,12)
+    end;
+startDistributive(reverse) ->
+    receive
+        start -> io:fwrite("Distributive started~n"),
+                runDistributive(-2,-2)
     end.
 
 stopThemAll([P]) ->
@@ -168,46 +172,52 @@ startDis([P|T]) ->
     startDis(T).
 
 runElectricalNode(P,D,[DistrPID]) ->
-    DistrPID ! {frEN,self()},
+    DistrPID ! {toDist,self()},
     io:fwrite("N:Asking another dist... ~n"),
     receive
         stop -> io:fwrite("N: Stopped ~n");
-        {frDI,Need} -> randomPowerhouse(P) ! {toPH,Need},
-        io:fwrite("N:Powerhouse choosen... ~n"),
-        timer:sleep(2000),
-        runElectricalNode(P,D,D)
+		{fromDist,DISTPID,noNeed} -> timer:sleep(500),
+			runElectricalNode(P,D,[DistrPID]++DISTPID);
+        {fromDist,DISTPID,Need} -> randomPowerhouse(P) ! {toPH,DISTPID,Need},
+        	io:fwrite("N:Powerhouse choosen... ~n"),
+			lists:foreach(fun(Pid) -> Pid ! allDist end, P),
+        	timer:sleep(500),
+        	runElectricalNode(P,D,D)
     end;
 runElectricalNode(P,D,[DistrPID|T]) ->
-    DistrPID ! {frEN,self()},
+    DistrPID ! {toDist,self()},
     io:fwrite("N:Asking another dist... ~n"),
     receive
         stop -> io:fwrite("N: Stopped ~n");
-        {frDI,Need} -> randomPowerhouse(P) ! {toPH,Need},
-        io:fwrite("N:Powerhouse choosen... ~n")
+		{fromDist,DISTPID,noNeed} -> runElectricalNode(P,D,[DistrPID|T] ++ DISTPID);
+        {fromDist,DISTPID,Need} -> randomPowerhouse(P) ! {toPH,DISTPID,Need},
+        	io:fwrite("N:Powerhouse choosen... ~n")
     end,
     runElectricalNode(P,D,T).
 
-runPowerhouse(Id,Energy,InitialPower) ->
+runPowerhouse(Id,Energy,InitialPower,AlreadyServed) ->
     receive
     stop -> io:fwrite("N: Stopped ~n");
-    {toPH,Need} -> io:fwrite("P:Use my energy!~n"),
-            runPowerhouse(Id,Energy-Need,InitialPower)
-    after
-    1000 -> %TODO Replace time based synchronization with broadcast to them
+    {toPH,DISTPID,Need} -> io:fwrite("P:Use my energy!~n"),
+            runPowerhouse(Id,Energy-Need,InitialPower,[DISTPID|AlreadyServed]);
+    allDist ->
         saveEnergyBalance(Id,Energy),
         io:fwrite("P:Saved Balance!~n"),
-        runPowerhouse(Id,InitialPower,InitialPower)
+	lists:foreach(fun(Pid) -> Pid ! served end, AlreadyServed),
+        runPowerhouse(Id,InitialPower,InitialPower,[])
     end.
 
 runDistributive(Need,InitialNeed) ->
     receive
     stop -> io:fwrite("N: Stopped ~n");
-    {frEN,ENPID} -> 
-        ENPID ! {frDI,Need},
+    {toDist,ENPID} when Need /= 0 -> 
+        ENPID ! {fromDist,self(),Need},
         runDistributive(0,InitialNeed),
-        io:fwrite("D:Need sent.~n")
-    after
-    1000 -> io:fwrite("D:Need more energy!~n"),
+        io:fwrite("D:Need sent.~n");
+	{toDist,ENPID} when Need == 0 ->
+		ENPID ! {fromDist,self(),noNeed},
+		runDistributive(Need,InitialNeed);
+    served -> io:fwrite("D:Need more energy!~n"),
         runDistributive(InitialNeed,InitialNeed)
     end.
 
@@ -220,7 +230,8 @@ randomPowerhouse(powerhouses) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 saveEnergyBalance(FilenameId,Energy) ->
-    Data = integer_to_list(FilenameId) ++ " used " ++ integer_to_list(Energy),
+    Data = integer_to_list(FilenameId) ++ " used " 
+		++ integer_to_list(Energy) ++ " ",
     LineSep = io_lib:nl(),
     file:write_file("OutputFile",Data,[append]),
     file:write_file("OutputFile",LineSep,[append]).
